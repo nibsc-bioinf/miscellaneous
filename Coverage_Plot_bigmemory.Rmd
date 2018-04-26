@@ -1,0 +1,139 @@
+---
+title: "CoveragePlot_bigmemory"
+author: "Martin Fritzsche"
+date: "26 April 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Description
+
+* Generates mean-coverage-across-reference plots (including standard deviation) using an adjustable sliding window
+* `bigmemory` package is used to overcome RAM limitations while loading massive tables
+* Script loops over tsv tables (split by chromosome) containing depth data 
+* Data is saved in individual data frames that are named by sample and project, then collapsed into one data frame and factorised
+* Facet plots can be created to compare chromosomes and projects
+* Developed to generate a coverage overview by chromosome of human WGS IS for cancer diagnostics (project *162/171*)
+* Based on Coverage_Plot script (*148*)
+* **TO DO** add hline options to plots for average depth (per chromosome / total)
+
+## Input
+
+* Coverage tables (split by chromosome) generated via `samtools depth` (input is sorted .bam) in tsv format, second column is dropped
+
+## Parameters
+
+* `windowsize` - Size of the sliding window over which average coverage / standard deviation is calculated
+* `fileName` - Parsed from file name, expects naming like "chr09.split.depth"
+* `chrName` - Chromosome name parsed from file name, expects naming like "chr09.split.depth"
+* `project` - Project number (corresponds to indivual sample) as string
+
+## Required Packages
+
+* `ggplot2`
+* `bigmemory`
+* `bigtabulate`
+
+## Code for Individual Plots
+
+```{r results = 'hide'}
+setwd("Z:/Bioinformatic Misc/171-depth")
+
+library(bigmemory)
+library(bigtabulate)
+library(ggplot2)
+
+# Define input parameters
+windowsize <- 10000
+fileName <- list.files(pattern = "^chr.*split\\.depth$")
+chrName <- sub(pattern = "\\.split\\.depth$", x = fileName, replacement = "")
+project <- "171"
+
+# Define binning function
+slidingwindowplot <- function(windowsize, inputseq)
+{
+  starts <- seq(1, length(inputseq)-windowsize, by = windowsize)
+  n <- length(starts)
+  chunkbps <- numeric(n)
+  chunkstats <- numeric(n)
+  for (i in 1:n) {
+    chunk <- inputseq[starts[i]:(starts[i]+windowsize-1)] 
+    chunkmean <- mean(chunk)
+    chunkstdv <- sd(chunk)
+    chunkbps[i] <- chunkmean
+    chunkstats[i] <- chunkstdv
+  }
+  return (list(starts,chunkbps,chunkstats))
+}
+
+# Initialise list of data frames
+df_list <- vector(mode = "list", length = length(chrName))
+i <- 1
+
+# Big Loop through tsv files
+for (name in chrName) {
+  big_matrix <- read.big.matrix(paste(name, ".split.depth", sep = ""), 
+                                header = FALSE, type = "short", sep = "\t", 
+                                backingfile = paste(name, ".bin", sep = ""), 
+                                descriptorfile = paste(name, ".dest", sep = ""))
+  window <- slidingwindowplot(windowsize, big_matrix[ , 2])
+  df <- as.data.frame(window, col.names = c("x", "mean", "sd"))
+  df$chr <- rep(name, nrow(df))
+  df$project <- rep(project, nrow(df))
+  df_list[[i]] <- df
+  i <- i+1
+}
+
+# Collapse list of data frames into one data frame and factorise
+comb_df <- do.call("rbind", df_list)
+comb_df$chr <- as.factor(comb_df$chr)
+comb_df$project <- as.factor(comb_df$project)
+```
+
+## All plots with sd
+
+```{r echo = TRUE, warning = FALSE, fig.height = 5}
+# Generate plot
+ggplot(data = comb_df, aes(x = x, y = mean)) + 
+  geom_line(colour = "#0066CC", size = 0.1) + 
+  geom_ribbon(aes(ymax = mean + sd, ymin = mean - sd), alpha = 0.5, fill = "#0066CC") +
+  facet_grid(chr ~ ., scale = "free_y", space = "free_y") +
+  theme_bw() + 
+  xlab("Reference Start Position") + 
+  scale_x_continuous(expand = c(0,0)) +
+  ylim(c(0, 50)) +
+  ylab("Coverage") +
+  ggtitle(paste("Coverage Across Reference for project", project))
+```
+
+## Comparison plots for different projects (without sd)
+
+```{r results = 'hide'}
+ggplot(data = comb_df, aes(x = x, y = mean, colour = project)) + 
+  geom_line(size = 0.1) + 
+  facet_grid(chr ~ ., scale = "free_y", space = "free_y") +
+  theme_bw() + 
+  xlab("Reference Start Position") + 
+  scale_x_continuous(expand = c(0,0)) +
+  ylim(c(0, 50)) +
+  ylab("Coverage") +
+  ggtitle(paste("Coverage Across Reference", chrName))
+```
+
+## Subsetted plot with hline (average)
+
+```{r echo = TRUE, warning = FALSE, fig.height = 9}
+ggplot(data = subset(comb_df, chr == "chr01" & project == "162"), aes(x = x, y = mean)) + 
+  geom_line(colour = "#0066CC", size = 0.1) +
+  facet_grid(chr ~ project, scale = "free_y", space = "free_y") +
+  geom_hline(aes(yintercept = mean(comb_df[["mean"]])), colour="red") +
+  theme_bw() + 
+  xlab("Reference Start Position") + 
+  scale_x_continuous(expand = c(0,0)) +
+  ylim(c(0, 50)) +
+  ylab("Coverage") +
+  ggtitle(paste("Coverage Across Reference for project", project))
+```
