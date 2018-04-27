@@ -1,0 +1,132 @@
+---
+title: "Analysis for JAK2 Project"
+author: "Martin Fritzsche"
+date: "28 April 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Description
+Frequency plots for project 93 
+
+## Code
+```{r results = 'hide'}
+setwd("~/Bioinformatics/R_Projects/JAK2_VariantAnalysis")
+
+library("dtplyr")
+library("data.table")
+library("ggplot2")
+
+d1226 <- fread("1226.tsv")
+
+# Re-name columns
+colnames(d1226) <- c("S","Sample","Chromsome","Position","Reference","Coverage","R","A","C","G","T","N","pR","pA","pC","pG","pT","pN","FRead","RRead","VA","VB","VC","VD","VE","VF")
+
+# Assign actual T allele spike-in percentages (aPercent) and ddPCR percentages (ddPercent) to individual samples
+##d1226[,Percent:=c(rep(0.1,5),rep(0.6,5),rep(0,5),rep(100,5),rep(10,5),rep(1,5),rep(30,5),rep(90,5))]
+d1226[,aPercent := c(rep(0.1,12),  rep(0.4,12),rep(0.7,12),rep(0,16),rep(100,16),rep(10,4),rep(1,12),rep(30,4),rep(90,4))]
+d1226[,ddPercent := c(rep(0.035,12),rep(0.36,12),rep(0.57,12),rep(0.0029,16),rep(100,16),rep(11.3,4),rep(1.03,12),rep(30.3,4),rep(89.9,4))]
+
+# Calculate error for measured T allele frequencies
+##d1226[,Measured:=100-G/Coverage*100]
+d1226[,Measured := T/Coverage*100]
+d1226[,Noise := (A + C)/Coverage*100]
+d1226[,Error := d1226$Measured - d1226$ddPercent]
+
+# Perform t-Test on measured percentages vs digital PCR  percentages
+for (i in unique(d1226$ddPercent)) {
+  print(c(i,unlist(t.test(d1226$Measured[d1226$ddPercent == i] - i))[c(3,6,4,5)]))
+}
+```
+
+## Facet Plot 0 - 1% Spike In
+```{r echo = TRUE, warning = FALSE}
+p0_1 <- ggplot(subset(d1226, Measured < 10), aes(x = ddPercent, y = Measured)) +
+  geom_point() +
+  facet_grid(. ~ aPercent, scales = "free_x", shrink = TRUE) +
+  scale_y_continuous(breaks = seq(min(0), max(1.5), by = 0.1)) +
+  geom_hline(aes(yintercept = ddPercent, linetype = "ddPCR"), color = "red") +
+  geom_hline(aes(yintercept = aPercent, linetype = "Spike-In"), color = "blue") +
+  scale_linetype_manual(name = "Reference", values = c(2, 2), 
+                        guide = guide_legend(override.aes = list(color = c("red", "blue")))) +
+  ylab("T-Allele Frequency Measured by NGS in %") +
+  xlab("T-Allele Frequency Measured by ddPCR in %") +
+  ggtitle("T-Allele Spike-In in %")
+print(p0_1)
+```
+
+## Facet Plot 10 and 30 % Spike In
+```{r echo = TRUE, warning = FALSE}
+p10_30 <- ggplot(subset(d1226, Measured > 5 & Measured < 50), aes(x = ddPercent, y = Measured)) +
+  geom_point() +
+  facet_grid(. ~ aPercent, scales = "free", shrink = TRUE) +
+  scale_y_continuous(breaks = seq(min(5), max(40), by = 1)) +
+  geom_hline(aes(yintercept = ddPercent, linetype = "ddPCR"), color = "red") +
+  geom_hline(aes(yintercept = aPercent, linetype = "Spike-In"), color = "blue") +
+  scale_linetype_manual(name = "Reference", values = c(2, 2), 
+                        guide = guide_legend(override.aes = list(color = c("red", "blue")))) +
+  ylab("T-Allele Frequency Measured by NGS in %") +
+  xlab("T-Allele Frequency Measured by ddPCR in %") +
+  ggtitle("T-Allele Spike-In in %")
+print(p10_30)
+```
+
+## Facet Plot 90 and 100 % Spike In
+```{r echo = TRUE, warning = FALSE}
+p90_100 <- ggplot(subset(d1226, Measured > 80), aes(x = ddPercent, y = Measured)) +
+  geom_point() +
+  facet_grid(. ~ aPercent, scales = "free", shrink = TRUE) +
+  scale_y_continuous(breaks = seq(min(70), max(100), by = 1)) +
+  geom_hline(aes(yintercept = ddPercent, linetype = "ddPCR"), color = "red") +
+  geom_hline(aes(yintercept = aPercent, linetype = "Spike-In"), color = "blue") +
+  scale_linetype_manual(name = "Reference", values = c(2, 2), 
+                        guide = guide_legend(override.aes = list(color = c("red", "blue")))) +
+  ylab("T-Allele Frequency Measured by NGS in %") +
+  xlab("T-Allele Frequency Measured by ddPCR in %") +
+  ggtitle("T-Allele Spike-In in %")
+print(p90_100)
+```
+
+## Code for additional Plots
+```{r}
+# Convert ddPercent and aPercent into factors for individual plots
+d1226$aPercent <- factor(d1226$aPercent)
+d1226$ddPercent <- factor(d1226$ddPercent)
+```
+
+## Plot ddPercent against measured values for all samples
+```{r}
+p10 <- ggplot(d1226, aes(x = ddPercent, y = Measured, color = ddPercent)) +
+  geom_jitter() +
+  scale_y_log10(breaks = c(2:10 %o% 10^(-1:2))) +
+  theme(axis.text.y = element_text(size = 6)) +
+  labs(color = "ddPCR %") +
+  ylab("T-Allele Frequency Measured by NGS in %") +
+  xlab("T-Allele Frequency Measured by ddPCR in %")
+print(p10)
+```
+
+## Plot Error vs aPercent
+```{r}
+p11 <- ggplot(d1226, aes(x = aPercent, y = Error, color = aPercent)) +
+  geom_jitter() +
+  scale_y_continuous(breaks = round(seq(min(d1226$Error), max(d1226$Error), by = 0.5),1)) +
+  labs(color = "Spike-In %") +
+  ylab("Seq Error Compared to ddPCR Measurement in %") +
+  xlab("T-Allele Spike-In in %")
+print(p11)
+```
+
+## Subset data into groups with different actual Percentages
+```{r}
+d1226_0.0029 <- subset(d1226, ddPercent == 0.0029)
+d1226_0.035 <- subset(d1226, ddPercent == 0.035)
+```
+
+## t-test for difference between measurements of 0% (0.0029%) and 0.1% (0.036%) spike-in
+```{r}
+t.test(d1226_0.0029$Measured, d1226_0.035$Measured, var.equal = TRUE)
+```
+
