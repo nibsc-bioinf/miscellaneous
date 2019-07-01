@@ -1,0 +1,6 @@
+Block1	Block2	Block3	Column	Row	Name	ID	F635_Mean1	F635_Mean2	F635_Mean3	F635_Mean_Merged	F635_SD	Start_Position	Positive
+5	5	5	5	5 Non-structural_protein	HLDTVQPPKSPPRPE	5	5	5	5	5	465	FALSE
+5	5	5	5	5 Non-structural_protein	TPAEVGLFGFHIPVK	5	5	5	5	5	1985	FALSE
+5	5	5	5	5 Structural_protein	PLLRTAPGPGEVWVT	5	5	5	5	5	845	FALSE
+5	5	5	5	5 Non-structural_protein	GAGVYGWSAAESLRA	5	5	5	5	5	937	FALSE
+5	5	5	5	5 Structural_protein	YNQPAGDVRGVWGKG	5	5	5	5	5	209	FALSE
